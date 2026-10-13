@@ -106,7 +106,7 @@ export function generateHandColliders(
   const circles: CircleCollider[] = [];
   const capsules: CapsuleCollider[] = [];
 
-  // 1. Bout des 5 doigts
+  // 1. Bout des 5 doigts (surface de contact généreuse de 24px)
   const tipIndices = [4, 8, 12, 16, 20];
   for (const idx of tipIndices) {
     const pt = currentPoints[idx];
@@ -115,14 +115,14 @@ export function generateHandColliders(
       circles.push({
         type: 'circle',
         center: { x: pt.x, y: pt.y },
-        radius: 20,
+        radius: 24,
         velocity: vel,
         tag: 'fingertip',
       });
     }
   }
 
-  // 2. Centre de la paume (barycentre extrait via helper)
+  // 2. Large surface de la paume (rayon 56px pour couvrir tout le creux de la main)
   const palmCenter = extractPalmCenter(currentHand, screenWidth, screenHeight, mappingOpts);
   let palmVel = { vx: 0, vy: 0 };
 
@@ -137,12 +137,12 @@ export function generateHandColliders(
   circles.push({
     type: 'circle',
     center: { x: palmCenter.x, y: palmCenter.y },
-    radius: 40,
+    radius: 56,
     velocity: palmVel,
     tag: 'palm',
   });
 
-  // 3. Capsules osseuses
+  // 3. Capsules osseuses continues (rayon 18px pour que les doigts forment un bouclier sans trou)
   for (const [startIdx, endIdx] of HAND_CONNECTIONS) {
     const p1 = currentPoints[startIdx];
     const p2 = currentPoints[endIdx];
@@ -154,7 +154,7 @@ export function generateHandColliders(
         type: 'capsule',
         start: { x: p1.x, y: p1.y },
         end: { x: p2.x, y: p2.y },
-        radius: 12,
+        radius: 18,
         velocity: {
           vx: (v1.vx + v2.vx) / 2,
           vy: (v1.vy + v2.vy) / 2,

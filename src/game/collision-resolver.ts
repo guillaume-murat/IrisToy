@@ -3,6 +3,7 @@ import type { CircleCollider, CapsuleCollider, Vector2D, ColliderTag } from '../
 
 export interface BounceEvent {
   bounced: boolean;
+  resting: boolean;
   normal: Vector2D;
   impulse: number;
   contactPoint: Vector2D;
@@ -14,8 +15,9 @@ export function resolveBallHandCollision(
   circles: CircleCollider[],
   capsules: CapsuleCollider[]
 ): BounceEvent {
-  let resultBounce: BounceEvent = {
+  let resultCollision: BounceEvent = {
     bounced: false,
+    resting: false,
     normal: { x: 0, y: -1 },
     impulse: 0,
     contactPoint: { x: ball.position.x, y: ball.position.y },
@@ -33,48 +35,88 @@ export function resolveBallHandCollision(
     const distanceSquared = deltaX * deltaX + deltaY * deltaY;
     const minDistance = ball.radius + radius;
 
+    // Contact ou chevauchement physique détecté
     if (distanceSquared < minDistance * minDistance) {
       const dist = Math.sqrt(distanceSquared) || 0.001;
       const normalX = deltaX / dist;
       const normalY = deltaY / dist;
 
-      // Calcul de la vitesse relative
+      // 1. Toujours repousser immédiatement la balle hors de la main (impossible de traverser)
+      ball.resolvePenetration(center, { x: normalX, y: normalY }, minDistance);
+
+      // Calcul de la vitesse relative entre la balle et la main
       const relativeVx = ball.velocity.vx - velocity.vx;
       const relativeVy = ball.velocity.vy - velocity.vy;
       const normalVelocity = relativeVx * normalX + relativeVy * normalY;
 
-      // Seuls les objets en convergence provoquent un rebond
+      // La main soutient la balle par le dessous (normale pointant vers le haut)
+      const isSupportingFromBelow = normalY < -0.2;
+
+      // Si la balle et la main convergent
       if (normalVelocity < 0) {
-        ball.resolvePenetration(center, { x: normalX, y: normalY }, minDistance);
+        const impactSpeed = Math.abs(normalVelocity);
 
-        // Physique douce et progressive : impulsion amortie
-        const restitution = ball.restitution;
-        let impulseMagnitude = -(1 + restitution) * normalVelocity * 0.65;
-        // Plafonner l'impulsion directe pour éviter les réactions violentes
-        impulseMagnitude = Math.min(impulseMagnitude, 280);
+        // Frappe dynamique (mouvement rapide ou impact franc)
+        if (impactSpeed > 60) {
+          const restitution = ball.restitution;
+          let impulseMagnitude = -(1 + restitution) * normalVelocity * 0.6;
+          impulseMagnitude = Math.min(impulseMagnitude, 260);
 
-        // Contribution de la vitesse de la main modérée et plafonnée (pour éviter le bruit de tracking)
-        const handBonusX = Math.max(-180, Math.min(180, velocity.vx * 0.18));
-        const handBonusY = Math.max(-220, Math.min(100, velocity.vy * 0.2));
+          const handBonusX = Math.max(-160, Math.min(160, velocity.vx * 0.18));
+          const handBonusY = Math.max(-220, Math.min(80, velocity.vy * 0.22));
 
-        let impulseX = impulseMagnitude * normalX + handBonusX;
-        let impulseY = impulseMagnitude * normalY + handBonusY;
+          let impulseX = impulseMagnitude * normalX + handBonusX;
+          let impulseY = impulseMagnitude * normalY + handBonusY;
 
-        // Si frappé doucement par le dessous, léger soutien ascendant naturel sans éjection brutale
-        if (normalY < -0.3 && ball.velocity.vy + impulseY > -140) {
-          impulseY = -150 - ball.velocity.vy;
+          if (isSupportingFromBelow && ball.velocity.vy + impulseY > -140) {
+            impulseY = -140 - ball.velocity.vy;
+          }
+
+          impulseX = Math.max(-260, Math.min(260, impulseX));
+          impulseY = Math.max(-340, Math.min(160, impulseY));
+
+          ball.applyImpulse(impulseX, impulseY);
+
+          resultCollision = {
+            bounced: true,
+            resting: false,
+            normal: { x: normalX, y: normalY },
+            impulse: Math.abs(impulseMagnitude),
+            contactPoint: { x: center.x + normalX * radius, y: center.y + normalY * radius },
+            colliderTag: tag,
+          };
+          return true;
+        } else {
+          // Contact doux / Repos : La balle repose confortablement sur la main sans rebond brutal
+          if (isSupportingFromBelow) {
+            ball.velocity.vy = velocity.vy; // La balle suit le déplacement vertical de la main
+            ball.velocity.vx = velocity.vx * 0.75; // La balle suit le déplacement horizontal
+          } else {
+            // Glissement doux le long du doigt
+            ball.velocity.vx -= normalVelocity * normalX;
+            ball.velocity.vy -= normalVelocity * normalY;
+          }
+
+          resultCollision = {
+            bounced: false,
+            resting: true,
+            normal: { x: normalX, y: normalY },
+            impulse: 0,
+            contactPoint: { x: center.x + normalX * radius, y: center.y + normalY * radius },
+            colliderTag: tag,
+          };
+          return true;
         }
+      } else if (isSupportingFromBelow) {
+        // Objets en contact stable sans vitesse de pénétration : maintenir la balle sur la main
+        ball.velocity.vy = Math.min(ball.velocity.vy, velocity.vy);
+        ball.velocity.vx = ball.velocity.vx * 0.9 + velocity.vx * 0.1;
 
-        // Plafonner l'impulsion totale
-        impulseX = Math.max(-280, Math.min(280, impulseX));
-        impulseY = Math.max(-360, Math.min(180, impulseY));
-
-        ball.applyImpulse(impulseX, impulseY);
-
-        resultBounce = {
-          bounced: true,
+        resultCollision = {
+          bounced: false,
+          resting: true,
           normal: { x: normalX, y: normalY },
-          impulse: Math.abs(impulseMagnitude),
+          impulse: 0,
           contactPoint: { x: center.x + normalX * radius, y: center.y + normalY * radius },
           colliderTag: tag,
         };
@@ -84,10 +126,10 @@ export function resolveBallHandCollision(
     return false;
   }
 
-  // 1. Tester les colliders circulaires (bouts des doigts et paume)
+  // 1. Tester les colliders circulaires (paume et bouts des doigts)
   for (const c of circles) {
     if (testContact(c.center, c.radius, c.velocity, c.tag)) {
-      return resultBounce;
+      return resultCollision;
     }
   }
 
@@ -114,9 +156,9 @@ export function resolveBallHandCollision(
     }
 
     if (testContact(closestPoint, cap.radius, cap.velocity, cap.tag)) {
-      return resultBounce;
+      return resultCollision;
     }
   }
 
-  return resultBounce;
+  return resultCollision;
 }

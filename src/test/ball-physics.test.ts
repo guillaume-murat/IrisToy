@@ -15,10 +15,8 @@ describe('Ball Physics Simulation', () => {
 
     expect(ball.velocity.vy).toBe(0);
 
-    // Simuler 0.1s
     ball.step(0.1, 1000, 800);
 
-    // vy = 0 + 600 * 0.1 = 60 px/s
     expect(ball.velocity.vy).toBeCloseTo(60, 1);
     expect(ball.position.y).toBeGreaterThan(200);
   });
@@ -33,11 +31,9 @@ describe('Ball Physics Simulation', () => {
     });
     ball.velocity = { vx: -200, vy: 0 };
 
-    // L'étape suivante touche le mur gauche (x - r < 0)
     ball.step(0.1, 1000, 800);
 
     expect(ball.position.x).toBeGreaterThanOrEqual(25);
-    // vx s'inverse avec la restitution
     expect(ball.velocity.vx).toBeGreaterThan(0);
   });
 
@@ -53,14 +49,13 @@ describe('Ball Physics Simulation', () => {
 
     ball.step(0.1, 1000, 800);
 
-    // La balle doit rester en vie et rebondir vers le haut
     expect(ball.isAlive).toBe(true);
     expect(ball.position.y).toBeLessThanOrEqual(800 - 30);
-    expect(ball.velocity.vy).toBeLessThan(0); // rebond vers le haut
+    expect(ball.velocity.vy).toBeLessThan(0);
   });
 });
 
-describe('Dynamic Hand Collision & Momentum Transfer', () => {
+describe('Dynamic Hand Collision & Resting / Holding Support', () => {
   it('imparts upward velocity when hand moves upward into the ball', () => {
     const ball = new Ball({
       x: 500,
@@ -69,9 +64,8 @@ describe('Dynamic Hand Collision & Momentum Transfer', () => {
       gravity: 0,
       restitution: 0.65,
     });
-    ball.velocity = { vx: 0, vy: 150 }; // Balle descendant doucement
+    ball.velocity = { vx: 0, vy: 150 };
 
-    // Main remontant vers la balle
     const handCollider: CircleCollider = {
       type: 'circle',
       center: { x: 500, y: 430 },
@@ -83,8 +77,35 @@ describe('Dynamic Hand Collision & Momentum Transfer', () => {
     const bounce = resolveBallHandCollision(ball, [handCollider], []);
 
     expect(bounce.bounced).toBe(true);
-    // La balle est propulsée vers le haut de façon maîtrisée
     expect(ball.velocity.vy).toBeLessThan(0);
     expect(ball.position.y).toBeLessThan(handCollider.center.y - handCollider.radius);
+  });
+
+  it('allows holding and resting the ball on a stationary hand without falling through', () => {
+    const ball = new Ball({
+      x: 500,
+      y: 420,
+      radius: 35,
+      gravity: 480,
+    });
+    ball.velocity = { vx: 0, vy: 20 }; // Very slow gentle descent into palm
+
+    const palmCollider: CircleCollider = {
+      type: 'circle',
+      center: { x: 500, y: 460 }, // Palm center under ball
+      radius: 50,
+      velocity: { vx: 0, vy: 0 }, // Stationary hand
+      tag: 'palm',
+    };
+
+    // Collision should resolve penetration and keep ball resting on top
+    const collision = resolveBallHandCollision(ball, [palmCollider], []);
+
+    expect(collision.resting || collision.bounced).toBe(true);
+    // Ball must be pushed out on top of palm
+    const minDistance = ball.radius + palmCollider.radius;
+    expect(ball.position.y).toBeCloseTo(palmCollider.center.y - minDistance - 1, 0);
+    // Downward velocity must be stopped so it does not sink
+    expect(ball.velocity.vy).toBeLessThanOrEqual(0);
   });
 });

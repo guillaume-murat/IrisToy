@@ -37,15 +37,15 @@ async function bootstrap() {
   const audioEffects = new AudioEffects();
   const gameSession = new GameSession();
 
-  // Balle avec physique douce, aérienne et contrôlée (bac à sable)
+  // Balle avec physique douce et stable
   const ball = new Ball({
     x: window.innerWidth / 2,
     y: 140,
     radius: 38,
-    gravity: 480, // Gravité douce (effet ballon léger)
-    restitution: 0.65, // Rebond amorti
+    gravity: 460, // Gravité douce
+    restitution: 0.6, // Rebond amorti
     friction: 0.996,
-    maxSpeed: 500, // Plafonnement évitant les éjections brusques
+    maxSpeed: 500,
   });
 
   function updateScoreDisplay() {
@@ -112,7 +112,7 @@ async function bootstrap() {
 
   const prevHandsMap = new Map<Handedness, DetectedHand>();
   let lastLoopTime = performance.now();
-  let lastBounceTime = 0;
+  let lastBounceSoundTime = 0;
 
   function gameLoop(now: number) {
     updateFps(now);
@@ -175,15 +175,17 @@ async function bootstrap() {
     if (gameSession.state === 'PLAYING') {
       ball.step(dt, screenWidth, screenHeight);
 
-      // Résolution douce des collisions avec debouncing temporel (évite les rafales de rebonds)
-      if (now - lastBounceTime > 80) {
-        const bounce = resolveBallHandCollision(ball, allCircles, allCapsules);
-        if (bounce.bounced) {
-          lastBounceTime = now;
-          gameSession.recordBounce(bounce.impulse);
-          const bounceAngle = Math.atan2(bounce.normal.y, bounce.normal.x);
+      // Résolution continue des collisions à chaque frame (empêche formellement de traverser la main)
+      const collision = resolveBallHandCollision(ball, allCircles, allCapsules);
+
+      if (collision.bounced) {
+        // Déclencher le son et le compteur uniquement sur impact franc avec délai d'espacement
+        if (now - lastBounceSoundTime > 110) {
+          lastBounceSoundTime = now;
+          gameSession.recordBounce(collision.impulse);
+          const bounceAngle = Math.atan2(collision.normal.y, collision.normal.x);
           ballRenderer.triggerBounceEffect(bounceAngle);
-          particleSystem.emitBurst(bounce.contactPoint.x, bounce.contactPoint.y, 14);
+          particleSystem.emitBurst(collision.contactPoint.x, collision.contactPoint.y, 14);
         }
       }
     }
