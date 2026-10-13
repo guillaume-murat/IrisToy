@@ -39,28 +39,29 @@ export class Ball {
     this.position.x += this.velocity.vx * dt;
     this.position.y += this.velocity.vy * dt;
 
-    // Collisions avec les bords de l'écran
-    // Mur gauche
+    // Collisions avec les bords latéraux de l'écran
     if (this.position.x - this.radius < 0) {
       this.position.x = this.radius;
       this.velocity.vx = Math.abs(this.velocity.vx) * this.restitution;
-    }
-    // Mur droit
-    else if (this.position.x + this.radius > screenWidth) {
+    } else if (this.position.x + this.radius > screenWidth) {
       this.position.x = screenWidth - this.radius;
       this.velocity.vx = -Math.abs(this.velocity.vx) * this.restitution;
-    }
-
-    // Plafond
-    if (this.position.y - this.radius < 0) {
-      this.position.y = this.radius;
-      this.velocity.vy = Math.abs(this.velocity.vy) * this.restitution;
     }
 
     // Chute sous le bas de l'écran (balle perdue)
     if (this.position.y - this.radius > screenHeight) {
       this.isAlive = false;
     }
+  }
+
+  public resolvePenetration(contactCenter: { x: number; y: number }, normal: { x: number; y: number }, minDistance: number): void {
+    this.position.x = contactCenter.x + normal.x * (minDistance + 1);
+    this.position.y = contactCenter.y + normal.y * (minDistance + 1);
+  }
+
+  public applyImpulse(impulseX: number, impulseY: number): void {
+    this.velocity.vx += impulseX;
+    this.velocity.vy += impulseY;
   }
 
   public reset(spawnX: number, spawnY: number, initialVx: number = 0, initialVy: number = 0): void {

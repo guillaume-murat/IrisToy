@@ -1,6 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
 import type { DetectedHand } from '../types/tracking';
-import { HAND_CONNECTIONS, mapLandmarkToScreen } from '../tracking/landmark-mapper';
+import { HAND_CONNECTIONS, mapLandmarkToScreen, type ViewportMappingOptions } from '../tracking/landmark-mapper';
 
 export class SkeletonRenderer {
   public container: Container;
@@ -24,24 +24,26 @@ export class SkeletonRenderer {
     hands: DetectedHand[],
     screenWidth: number,
     screenHeight: number,
-    mirrored: boolean = true
+    mappingOptions: boolean | ViewportMappingOptions = true
   ): void {
     this.graphics.clear();
     if (!this.visible || hands.length === 0) {
       return;
     }
 
+    const mappingOpts: ViewportMappingOptions =
+      typeof mappingOptions === 'boolean' ? { mirrored: mappingOptions } : mappingOptions;
+
     for (const hand of hands) {
       const isLeft = hand.handedness === 'Left';
-      // Main gauche en cyan subtil, main droite en violet/magenta subtil (comme sur l'image de référence)
       const boneColor = isLeft ? 0x38bdf8 : 0xc084fc;
       const jointColor = 0xffffff;
 
       const screenPoints = hand.landmarks.map((l) =>
-        mapLandmarkToScreen(l, screenWidth, screenHeight, mirrored)
+        mapLandmarkToScreen(l, screenWidth, screenHeight, mappingOpts)
       );
 
-      // Dessiner les connexions osseuses
+      // Dessiner les connexions du squelette
       for (const [startIdx, endIdx] of HAND_CONNECTIONS) {
         const p1 = screenPoints[startIdx];
         const p2 = screenPoints[endIdx];
@@ -53,7 +55,7 @@ export class SkeletonRenderer {
         }
       }
 
-      // Dessiner les repères (articulations et bouts des doigts)
+      // Dessiner les repères articulaires
       for (let i = 0; i < screenPoints.length; i++) {
         const p = screenPoints[i];
         if (p) {

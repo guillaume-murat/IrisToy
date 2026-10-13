@@ -1,5 +1,5 @@
 import type { DetectedHand, Point3D } from '../types/tracking';
-import { HAND_CONNECTIONS, mapLandmarkToScreen } from '../tracking/landmark-mapper';
+import { HAND_CONNECTIONS, mapLandmarkToScreen, type ViewportMappingOptions } from '../tracking/landmark-mapper';
 import { classifyHandPose, type HandPoseType } from './pose-classifier';
 
 export interface Vector2D {
@@ -7,12 +7,14 @@ export interface Vector2D {
   y: number;
 }
 
+export type ColliderTag = 'fingertip' | 'palm' | 'bone';
+
 export interface CircleCollider {
   type: 'circle';
   center: Vector2D;
   radius: number;
   velocity: { vx: number; vy: number };
-  tag: 'fingertip' | 'palm';
+  tag: ColliderTag;
 }
 
 export interface CapsuleCollider {
@@ -21,7 +23,7 @@ export interface CapsuleCollider {
   end: Vector2D;
   radius: number;
   velocity: { vx: number; vy: number };
-  tag: 'bone';
+  tag: ColliderTag;
 }
 
 export interface HandColliderSet {
@@ -47,24 +49,46 @@ function computeCentroid(points: Point3D[]): Point3D {
   };
 }
 
+function extractPalmCenter(
+  hand: DetectedHand,
+  screenWidth: number,
+  screenHeight: number,
+  mappingOpts: ViewportMappingOptions
+): Vector2D {
+  const palmLandmarks = [
+    hand.landmarks[0]!,
+    hand.landmarks[5]!,
+    hand.landmarks[9]!,
+    hand.landmarks[13]!,
+    hand.landmarks[17]!,
+  ];
+  const centroidNormalized = computeCentroid(palmLandmarks);
+  const screenPoint = mapLandmarkToScreen(centroidNormalized, screenWidth, screenHeight, mappingOpts);
+  return { x: screenPoint.x, y: screenPoint.y };
+}
+
 export function generateHandColliders(
   currentHand: DetectedHand,
   previousHand: DetectedHand | null,
   screenWidth: number,
   screenHeight: number,
   deltaTimeSeconds: number,
-  mirrored: boolean = true
+  mappingOptions: boolean | ViewportMappingOptions = true
 ): HandColliderSet {
   const dt = Math.max(0.001, deltaTimeSeconds);
   const pose = classifyHandPose(currentHand.landmarks);
+  const mappingOpts: ViewportMappingOptions =
+    typeof mappingOptions === 'boolean' ? { mirrored: mappingOptions } : mappingOptions;
 
   // Convertir tous les landmarks en coordonnées écran
   const currentPoints = currentHand.landmarks.map((l) =>
-    mapLandmarkToScreen(l, screenWidth, screenHeight, mirrored)
+    mapLandmarkToScreen(l, screenWidth, screenHeight, mappingOpts)
   );
 
   const prevPoints = previousHand
-    ? previousHand.landmarks.map((l) => mapLandmarkToScreen(l, screenWidth, screenHeight, mirrored))
+    ? previousHand.landmarks.map((l) =>
+        mapLandmarkToScreen(l, screenWidth, screenHeight, mappingOpts)
+      )
     : null;
 
   // Calculer la vélocité pour chaque landmark
@@ -82,7 +106,7 @@ export function generateHandColliders(
   const circles: CircleCollider[] = [];
   const capsules: CapsuleCollider[] = [];
 
-  // 1. Bout des 5 doigts (indices 4, 8, 12, 16, 20)
+  // 1. Bout des 5 doigts
   const tipIndices = [4, 8, 12, 16, 20];
   for (const idx of tipIndices) {
     const pt = currentPoints[idx];
@@ -98,33 +122,12 @@ export function generateHandColliders(
     }
   }
 
-  // 2. Centre de la paume (barycentre du poignet et des bases MCP 0, 5, 9, 13, 17)
-  const palmLandmarks = [
-    currentHand.landmarks[0]!,
-    currentHand.landmarks[5]!,
-    currentHand.landmarks[9]!,
-    currentHand.landmarks[13]!,
-    currentHand.landmarks[17]!,
-  ];
-  const palmCenterNormalized = computeCentroid(palmLandmarks);
-  const palmCenter = mapLandmarkToScreen(palmCenterNormalized, screenWidth, screenHeight, mirrored);
-
+  // 2. Centre de la paume (barycentre extrait via helper)
+  const palmCenter = extractPalmCenter(currentHand, screenWidth, screenHeight, mappingOpts);
   let palmVel = { vx: 0, vy: 0 };
+
   if (previousHand) {
-    const prevPalmLandmarks = [
-      previousHand.landmarks[0]!,
-      previousHand.landmarks[5]!,
-      previousHand.landmarks[9]!,
-      previousHand.landmarks[13]!,
-      previousHand.landmarks[17]!,
-    ];
-    const prevPalmCenterNormalized = computeCentroid(prevPalmLandmarks);
-    const prevPalmCenter = mapLandmarkToScreen(
-      prevPalmCenterNormalized,
-      screenWidth,
-      screenHeight,
-      mirrored
-    );
+    const prevPalmCenter = extractPalmCenter(previousHand, screenWidth, screenHeight, mappingOpts);
     palmVel = {
       vx: (palmCenter.x - prevPalmCenter.x) / dt,
       vy: (palmCenter.y - prevPalmCenter.y) / dt,
@@ -139,7 +142,7 @@ export function generateHandColliders(
     tag: 'palm',
   });
 
-  // 3. Capsules pour les segments osseux majeurs
+  // 3. Capsules osseuses
   for (const [startIdx, endIdx] of HAND_CONNECTIONS) {
     const p1 = currentPoints[startIdx];
     const p2 = currentPoints[endIdx];

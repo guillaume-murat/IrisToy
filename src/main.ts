@@ -137,6 +137,12 @@ async function bootstrap() {
     const screenWidth = pixiRenderer.app.screen?.width ?? window.innerWidth;
     const screenHeight = pixiRenderer.app.screen?.height ?? window.innerHeight;
 
+    const mappingOpts = {
+      mirrored: true,
+      videoWidth: webcamVideo.videoWidth || 1280,
+      videoHeight: webcamVideo.videoHeight || 720,
+    };
+
     // Détection des mains
     const frame = handLandmarkerService.detectVideoFrame(webcamVideo, now);
 
@@ -156,7 +162,7 @@ async function bootstrap() {
           screenWidth,
           screenHeight,
           dt,
-          true
+          mappingOpts
         );
         colliderSets.push(colliders);
         allCircles.push(...colliders.circles);
@@ -173,10 +179,10 @@ async function bootstrap() {
       const poseLabels = colliderSets.map((c) => c.pose).join(' | ');
       statHands.textContent = `Mains: ${frame.hands.length}${poseLabels ? ` (${poseLabels})` : ''}`;
 
-      skeletonRenderer.render(frame.hands, screenWidth, screenHeight, true);
+      skeletonRenderer.render(frame.hands, screenWidth, screenHeight, mappingOpts);
       contactRenderer.render(colliderSets);
     } else {
-      skeletonRenderer.render([], screenWidth, screenHeight, true);
+      skeletonRenderer.render([], screenWidth, screenHeight, mappingOpts);
       contactRenderer.render([]);
     }
 
@@ -187,7 +193,7 @@ async function bootstrap() {
 
         // Résolution des collisions main / ballon
         const bounce = resolveBallHandCollision(ball, allCircles, allCapsules);
-        if (bounce.hit) {
+        if (bounce.bounced) {
           gameSession.recordBounce(bounce.impulse);
           const bounceAngle = Math.atan2(bounce.normal.y, bounce.normal.x);
           ballRenderer.triggerBounceEffect(bounceAngle);
@@ -217,11 +223,6 @@ async function bootstrap() {
       await cameraService.start();
       await pixiRenderer.init(pixiContainer);
 
-      // Ordre du stage PixiJS :
-      // 1. Squelette
-      // 2. Halos tactiles
-      // 3. Particules d'impact
-      // 4. Ballon
       pixiRenderer.rootContainer.addChild(skeletonRenderer.container);
       pixiRenderer.rootContainer.addChild(contactRenderer.container);
       pixiRenderer.rootContainer.addChild(particleSystem.container);
@@ -241,15 +242,16 @@ async function bootstrap() {
     }
   }
 
+  // Afficher le modal d'explication au lancement pour respecter la User Story 1
+  overlayScreen.classList.remove('hidden');
+  modalTitle.textContent = 'Accès à la caméra requis';
+  modalMessage.textContent =
+    'IrisToy utilise votre webcam pour détecter vos mains et vos gestes en temps réel directement dans votre navigateur. Le traitement s’exécute à 100% sur votre appareil : aucune image n’est transmise sur internet.';
+  btnRequestCamera.textContent = 'Autoriser la caméra et Jouer';
+
   btnRequestCamera.addEventListener('click', () => {
     startApp();
   });
-
-  try {
-    await startApp();
-  } catch {
-    // startApp gère l'affichage du modal
-  }
 }
 
 window.addEventListener('DOMContentLoaded', bootstrap);

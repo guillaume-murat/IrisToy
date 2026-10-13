@@ -13,8 +13,6 @@ export function classifyHandPose(landmarks: Point3D[]): HandPoseType {
 
   const wrist = landmarks[0]!;
   const thumbTip = landmarks[4]!;
-  const thumbMcp = landmarks[2]!;
-  const indexMcp = landmarks[5]!;
   const indexPip = landmarks[6]!;
   const indexTip = landmarks[8]!;
   const middlePip = landmarks[10]!;
@@ -24,27 +22,26 @@ export function classifyHandPose(landmarks: Point3D[]): HandPoseType {
   const pinkyPip = landmarks[18]!;
   const pinkyTip = landmarks[20]!;
 
-  // Pincement : bout du pouce proche du bout de l'index
-  const thumbIndexDist = distance(thumbTip, indexTip);
-  if (thumbIndexDist < 0.08) {
-    return 'Pinch';
-  }
-
-  // Extension de chaque doigt : distance du tip au poignet supérieure à la distance du PIP au poignet
+  // Extension de chaque doigt : distance du bout du doigt au poignet supérieure à la distance du PIP au poignet
   const isIndexExtended = distance(indexTip, wrist) > distance(indexPip, wrist);
   const isMiddleExtended = distance(middleTip, wrist) > distance(middlePip, wrist);
   const isRingExtended = distance(ringTip, wrist) > distance(ringPip, wrist);
   const isPinkyExtended = distance(pinkyTip, wrist) > distance(pinkyPip, wrist);
-  const isThumbExtended = distance(thumbTip, indexMcp) > distance(thumbMcp, indexMcp);
 
-  // Main ouverte : 4 ou 5 doigts étendus
-  if (isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended) {
-    return 'OpenPalm';
-  }
-
-  // Poing fermé : tous les 4 doigts pliés
+  // Poing fermé : les 4 doigts sont pliés
   if (!isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
     return 'Fist';
+  }
+
+  // Pincement : pouce et index proches l'un de l'autre, avec l'index non plié en poing
+  const thumbIndexDist = distance(thumbTip, indexTip);
+  if (thumbIndexDist < 0.08 && isIndexExtended) {
+    return 'Pinch';
+  }
+
+  // Main ouverte : les 4 doigts sont étendus
+  if (isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended) {
+    return 'OpenPalm';
   }
 
   // Index pointé : seul l'index est étendu
@@ -52,5 +49,5 @@ export function classifyHandPose(landmarks: Point3D[]): HandPoseType {
     return 'Pointing';
   }
 
-  return isThumbExtended ? 'OpenPalm' : 'Unknown';
+  return 'Unknown';
 }

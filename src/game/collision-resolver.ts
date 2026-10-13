@@ -1,12 +1,12 @@
 import type { Ball } from './ball';
-import type { CircleCollider, CapsuleCollider, Vector2D } from '../physics/hand-colliders';
+import type { CircleCollider, CapsuleCollider, Vector2D, ColliderTag } from '../physics/hand-colliders';
 
 export interface BounceEvent {
-  hit: boolean;
+  bounced: boolean;
   normal: Vector2D;
   impulse: number;
   contactPoint: Vector2D;
-  colliderTag: string;
+  colliderTag: ColliderTag;
 }
 
 export function resolveBallHandCollision(
@@ -14,58 +14,57 @@ export function resolveBallHandCollision(
   circles: CircleCollider[],
   capsules: CapsuleCollider[]
 ): BounceEvent {
-  let bestBounce: BounceEvent = {
-    hit: false,
+  let resultBounce: BounceEvent = {
+    bounced: false,
     normal: { x: 0, y: -1 },
     impulse: 0,
     contactPoint: { x: ball.position.x, y: ball.position.y },
-    colliderTag: '',
+    colliderTag: 'palm',
   };
 
-  // Helper pour traiter un point de collision circulaire
-  function testCircle(
+  function testContact(
     center: Vector2D,
     radius: number,
     velocity: { vx: number; vy: number },
-    tag: string
+    tag: ColliderTag
   ): boolean {
-    const dx = ball.position.x - center.x;
-    const dy = ball.position.y - center.y;
-    const distSq = dx * dx + dy * dy;
-    const minDist = ball.radius + radius;
+    const deltaX = ball.position.x - center.x;
+    const deltaY = ball.position.y - center.y;
+    const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+    const minDistance = ball.radius + radius;
 
-    if (distSq < minDist * minDist) {
-      const dist = Math.sqrt(distSq) || 0.001;
-      const nx = dx / dist;
-      const ny = dy / dist;
-
-      // Résoudre la pénétration géométrique
-      ball.position.x = center.x + nx * (minDist + 1);
-      ball.position.y = center.y + ny * (minDist + 1);
+    if (distanceSquared < minDistance * minDistance) {
+      const dist = Math.sqrt(distanceSquared) || 0.001;
+      const normalX = deltaX / dist;
+      const normalY = deltaY / dist;
 
       // Calcul de la vitesse relative
-      const relVx = ball.velocity.vx - velocity.vx;
-      const relVy = ball.velocity.vy - velocity.vy;
-      const normalVel = relVx * nx + relVy * ny;
+      const relativeVx = ball.velocity.vx - velocity.vx;
+      const relativeVy = ball.velocity.vy - velocity.vy;
+      const normalVelocity = relativeVx * normalX + relativeVy * normalY;
 
-      // Si les objets convergent
-      if (normalVel < 0) {
+      // Seuls les objets en convergence provoquent un rebond
+      if (normalVelocity < 0) {
+        ball.resolvePenetration(center, { x: normalX, y: normalY }, minDistance);
+
         const restitution = ball.restitution;
-        const impulse = -(1 + restitution) * normalVel;
+        const impulseMagnitude = -(1 + restitution) * normalVelocity;
 
-        ball.velocity.vx += impulse * nx + 0.6 * velocity.vx;
-        ball.velocity.vy += impulse * ny + 0.6 * velocity.vy;
+        let impulseX = impulseMagnitude * normalX + 0.6 * velocity.vx;
+        let impulseY = impulseMagnitude * normalY + 0.6 * velocity.vy;
 
-        // Garantir un rebond dynamique vers le haut si frappé par le dessus de la main
-        if (ny < -0.2 && ball.velocity.vy > -350) {
-          ball.velocity.vy = -Math.max(350, Math.abs(ball.velocity.vy));
+        // Assurer un rebond ascendant dynamique lorsque frappé par le haut de la main
+        if (normalY < -0.2 && ball.velocity.vy + impulseY > -350) {
+          impulseY = -350 - ball.velocity.vy;
         }
 
-        bestBounce = {
-          hit: true,
-          normal: { x: nx, y: ny },
-          impulse: Math.abs(impulse),
-          contactPoint: { x: center.x + nx * radius, y: center.y + ny * radius },
+        ball.applyImpulse(impulseX, impulseY);
+
+        resultBounce = {
+          bounced: true,
+          normal: { x: normalX, y: normalY },
+          impulse: Math.abs(impulseMagnitude),
+          contactPoint: { x: center.x + normalX * radius, y: center.y + normalY * radius },
           colliderTag: tag,
         };
         return true;
@@ -76,34 +75,37 @@ export function resolveBallHandCollision(
 
   // 1. Tester les colliders circulaires (bouts des doigts et paume)
   for (const c of circles) {
-    if (testCircle(c.center, c.radius, c.velocity, c.tag)) {
-      return bestBounce;
+    if (testContact(c.center, c.radius, c.velocity, c.tag)) {
+      return resultBounce;
     }
   }
 
-  // 2. Tester les colliders capsules (os des doigts)
+  // 2. Tester les capsules osseuses
   for (const cap of capsules) {
-    const abx = cap.end.x - cap.start.x;
-    const aby = cap.end.y - cap.start.y;
-    const lenSq = abx * abx + aby * aby;
+    const segmentX = cap.end.x - cap.start.x;
+    const segmentY = cap.end.y - cap.start.y;
+    const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
 
     let closestPoint: Vector2D;
-    if (lenSq < 0.001) {
+    if (segmentLengthSquared < 0.001) {
       closestPoint = { x: cap.start.x, y: cap.start.y };
     } else {
-      const apx = ball.position.x - cap.start.x;
-      const apy = ball.position.y - cap.start.y;
-      const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / lenSq));
+      const toBallX = ball.position.x - cap.start.x;
+      const toBallY = ball.position.y - cap.start.y;
+      const projectionFraction = Math.max(
+        0,
+        Math.min(1, (toBallX * segmentX + toBallY * segmentY) / segmentLengthSquared)
+      );
       closestPoint = {
-        x: cap.start.x + t * abx,
-        y: cap.start.y + t * aby,
+        x: cap.start.x + projectionFraction * segmentX,
+        y: cap.start.y + projectionFraction * segmentY,
       };
     }
 
-    if (testCircle(closestPoint, cap.radius, cap.velocity, cap.tag)) {
-      return bestBounce;
+    if (testContact(closestPoint, cap.radius, cap.velocity, cap.tag)) {
+      return resultBounce;
     }
   }
 
-  return bestBounce;
+  return resultBounce;
 }

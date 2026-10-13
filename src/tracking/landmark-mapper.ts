@@ -6,8 +6,14 @@ export interface ScreenPoint {
   z: number;
 }
 
+export interface ViewportMappingOptions {
+  mirrored?: boolean;
+  videoWidth?: number;
+  videoHeight?: number;
+}
+
 /**
- * Standard MediaPipe Hands 21-landmark topology.
+ * MediaPipe Hands 21-landmark skeletal topology.
  * Indices:
  * 0: WRIST
  * 1-4: THUMB (CMC, MCP, IP, TIP)
@@ -45,7 +51,7 @@ export const HAND_CONNECTIONS: ReadonlyArray<[number, number]> = [
   [18, 19],
   [19, 20],
 
-  // Palm base mesh
+  // Palm base connection
   [5, 9],
   [9, 13],
   [13, 17],
@@ -53,18 +59,43 @@ export const HAND_CONNECTIONS: ReadonlyArray<[number, number]> = [
 
 /**
  * Maps normalized coordinates [0, 1] to screen pixel space.
- * When mirrored is true, horizontally flips x coordinate (1 - x) to match CSS scaleX(-1) mirror webcam.
+ * Correctly accounts for CSS object-fit: cover scaling and horizontal mirroring.
  */
 export function mapLandmarkToScreen(
   landmark: Point3D,
   screenWidth: number,
   screenHeight: number,
-  mirrored: boolean = true
+  options: boolean | ViewportMappingOptions = true
 ): ScreenPoint {
+  const opts: ViewportMappingOptions =
+    typeof options === 'boolean' ? { mirrored: options } : options;
+  const mirrored = opts.mirrored ?? true;
+
+  let renderWidth = screenWidth;
+  let renderHeight = screenHeight;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (opts.videoWidth && opts.videoHeight && opts.videoWidth > 0 && opts.videoHeight > 0) {
+    const videoAspect = opts.videoWidth / opts.videoHeight;
+    const screenAspect = screenWidth / screenHeight;
+
+    if (screenAspect > videoAspect) {
+      renderWidth = screenWidth;
+      renderHeight = screenWidth / videoAspect;
+      offsetY = (screenHeight - renderHeight) / 2;
+    } else {
+      renderHeight = screenHeight;
+      renderWidth = screenHeight * videoAspect;
+      offsetX = (screenWidth - renderWidth) / 2;
+    }
+  }
+
   const normX = mirrored ? 1 - landmark.x : landmark.x;
+
   return {
-    x: normX * screenWidth,
-    y: landmark.y * screenHeight,
+    x: offsetX + normX * renderWidth,
+    y: offsetY + landmark.y * renderHeight,
     z: landmark.z,
   };
 }

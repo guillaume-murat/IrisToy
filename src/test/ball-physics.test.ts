@@ -82,7 +82,7 @@ describe('Dynamic Hand Collision & Momentum Transfer', () => {
 
     const bounce = resolveBallHandCollision(ball, [handCollider], []);
 
-    expect(bounce.hit).toBe(true);
+    expect(bounce.bounced).toBe(true);
     // Ball should be propelled upward (vy < 0)
     expect(ball.velocity.vy).toBeLessThan(0);
     // Position should be resolved above the hand collider
