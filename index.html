@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IrisToy - Webcam Hand Tracking Game</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Conteneur vidéo webcam (effet miroir) -->
+      <div id="video-container">
+        <video id="webcam" playsinline autoplay muted></video>
+        <div id="pixi-container"></div>
+      </div>
+
+      <!-- Interface utilisateur (HUD & Commandes) -->
+      <header id="hud-header">
+        <div class="logo-title">
+          <span class="iris-badge">🔴 LIVE</span>
+          <h1>IrisToy</h1>
+        </div>
+        <div class="hud-stats">
+          <div class="stat-pill" id="stat-fps">FPS: --</div>
+          <div class="stat-pill" id="stat-hands">Mains: 0</div>
+          <button id="btn-toggle-skeleton" class="btn-pill" title="Touche 'D'">
+            Squelette: ON
+          </button>
+        </div>
+      </header>
+
+      <!-- Panneau d'accueil / Erreur d'accès caméra -->
+      <div id="overlay-screen" class="overlay-modal hidden">
+        <div class="modal-card">
+          <h2 id="modal-title">Accès à la caméra requis</h2>
+          <p id="modal-message">
+            IrisToy utilise votre webcam pour détecter vos mains et vos gestes en temps réel directement dans votre navigateur.
+          </p>
+          <button id="btn-request-camera" class="btn-primary">Autoriser la caméra</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
