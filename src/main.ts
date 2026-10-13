@@ -2,6 +2,9 @@ import { CameraService } from './camera/camera-service';
 import { PixiRenderer } from './rendering/pixi-renderer';
 import { HandLandmarkerService } from './tracking/hand-landmarker-service';
 import { SkeletonRenderer } from './rendering/skeleton-renderer';
+import { ContactRenderer } from './rendering/contact-renderer';
+import { generateHandColliders, type HandColliderSet } from './physics/hand-colliders';
+import type { DetectedHand, Handedness } from './types/tracking';
 
 async function bootstrap() {
   const webcamVideo = document.getElementById('webcam') as HTMLVideoElement;
@@ -18,6 +21,7 @@ async function bootstrap() {
   const pixiRenderer = new PixiRenderer();
   const handLandmarkerService = new HandLandmarkerService();
   const skeletonRenderer = new SkeletonRenderer();
+  const contactRenderer = new ContactRenderer();
 
   let showSkeleton = true;
   btnToggleSkeleton.addEventListener('click', () => {
@@ -33,38 +37,70 @@ async function bootstrap() {
     }
   });
 
-  // Gestion du calcul des FPS
-  let lastTime = performance.now();
+  // Calcul du framerate
+  let lastFpsTime = performance.now();
   let frameCount = 0;
   let fps = 0;
 
-  function updateFps() {
+  function updateFps(now: number) {
     frameCount++;
-    const now = performance.now();
-    const delta = now - lastTime;
+    const delta = now - lastFpsTime;
     if (delta >= 500) {
       fps = Math.round((frameCount * 1000) / delta);
       statFps.textContent = `FPS: ${fps}`;
       frameCount = 0;
-      lastTime = now;
+      lastFpsTime = now;
     }
   }
 
-  // Boucle principale de tracking et de rendu
-  function gameLoop() {
-    updateFps();
+  // Suivi temporel des mains pour le calcul des vitesses
+  const prevHandsMap = new Map<Handedness, DetectedHand>();
+  let lastLoopTime = performance.now();
 
-    const timestampMs = performance.now();
-    const frame = handLandmarkerService.detectVideoFrame(webcamVideo, timestampMs);
+  function gameLoop(now: number) {
+    updateFps(now);
+    const dt = Math.max(0.001, (now - lastLoopTime) / 1000);
+    lastLoopTime = now;
+
+    const frame = handLandmarkerService.detectVideoFrame(webcamVideo, now);
 
     const screenWidth = pixiRenderer.app.screen?.width ?? window.innerWidth;
     const screenHeight = pixiRenderer.app.screen?.height ?? window.innerHeight;
 
     if (frame) {
-      statHands.textContent = `Mains: ${frame.hands.length}`;
+      const colliderSets: HandColliderSet[] = [];
+      const currentHandedness = new Set<Handedness>();
+
+      for (const hand of frame.hands) {
+        currentHandedness.add(hand.handedness);
+        const prevHand = prevHandsMap.get(hand.handedness) ?? null;
+        const colliders = generateHandColliders(
+          hand,
+          prevHand,
+          screenWidth,
+          screenHeight,
+          dt,
+          true
+        );
+        colliderSets.push(colliders);
+        prevHandsMap.set(hand.handedness, hand);
+      }
+
+      // Nettoyer les mains qui ne sont plus détectées
+      for (const handedness of prevHandsMap.keys()) {
+        if (!currentHandedness.has(handedness)) {
+          prevHandsMap.delete(handedness);
+        }
+      }
+
+      const poseLabels = colliderSets.map((c) => c.pose).join(' | ');
+      statHands.textContent = `Mains: ${frame.hands.length}${poseLabels ? ` (${poseLabels})` : ''}`;
+
       skeletonRenderer.render(frame.hands, screenWidth, screenHeight, true);
+      contactRenderer.render(colliderSets);
     } else {
       skeletonRenderer.render([], screenWidth, screenHeight, true);
+      contactRenderer.render([]);
     }
 
     requestAnimationFrame(gameLoop);
@@ -78,12 +114,15 @@ async function bootstrap() {
 
       await cameraService.start();
       await pixiRenderer.init(pixiContainer);
-      pixiRenderer.rootContainer.addChild(skeletonRenderer.container);
 
-      // Initialiser le modèle MediaPipe HandLandmarker
+      // Ajouter le conteneur du squelette puis des contacts au stage PixiJS
+      pixiRenderer.rootContainer.addChild(skeletonRenderer.container);
+      pixiRenderer.rootContainer.addChild(contactRenderer.container);
+
       await handLandmarkerService.init();
 
-      console.log('IrisToy initialized successfully with HandLandmarker and PixiJS.');
+      console.log('IrisToy initialized successfully with colliders & pose detection.');
+      lastLoopTime = performance.now();
       requestAnimationFrame(gameLoop);
     } catch (err: unknown) {
       overlayScreen.classList.remove('hidden');
@@ -101,7 +140,7 @@ async function bootstrap() {
   try {
     await startApp();
   } catch {
-    // startApp gère l'affichage du modal
+    // startApp gère l'erreur
   }
 }
 
