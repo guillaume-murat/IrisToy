@@ -20,14 +20,44 @@
           <span class="iris-badge">🔴 LIVE</span>
           <h1>IrisToy</h1>
         </div>
+
+        <!-- Compteur de Score Central -->
+        <div id="hud-score-board" class="score-board">
+          <div class="score-main">
+            <span class="score-label">REBONDS</span>
+            <span id="stat-score" class="score-value">0</span>
+          </div>
+          <div class="score-sub">
+            <span>RECORD : </span>
+            <strong id="stat-best">0</strong>
+          </div>
+        </div>
+
         <div class="hud-stats">
           <div class="stat-pill" id="stat-fps">FPS: --</div>
           <div class="stat-pill" id="stat-hands">Mains: 0</div>
           <button id="btn-toggle-skeleton" class="btn-pill" title="Touche 'D'">
             Squelette: ON
           </button>
+          <button id="btn-toggle-pause" class="btn-pill" title="Touche 'P' ou Espace">
+            ⏸ Pause
+          </button>
         </div>
       </header>
+
+      <!-- Écran Game Over -->
+      <div id="gameover-screen" class="overlay-modal hidden">
+        <div class="modal-card">
+          <div class="gameover-icon">💥</div>
+          <h2>Balle perdue !</h2>
+          <p class="gameover-summary">
+            Vous avez réalisé <strong id="gameover-score">0</strong> rebonds consécutifs !
+            <br />
+            Meilleur record : <strong id="gameover-best">0</strong>
+          </p>
+          <button id="btn-restart-game" class="btn-primary">Rejouer (R / Espace)</button>
+        </div>
+      </div>
 
       <!-- Panneau d'accueil / Erreur d'accès caméra -->
       <div id="overlay-screen" class="overlay-modal hidden">
