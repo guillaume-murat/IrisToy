@@ -23,14 +23,9 @@ async function bootstrap() {
   const statFps = document.getElementById('stat-fps') as HTMLElement;
   const statHands = document.getElementById('stat-hands') as HTMLElement;
   const statScore = document.getElementById('stat-score') as HTMLElement;
-  const statBest = document.getElementById('stat-best') as HTMLElement;
   const btnToggleSkeleton = document.getElementById('btn-toggle-skeleton') as HTMLButtonElement;
   const btnTogglePause = document.getElementById('btn-toggle-pause') as HTMLButtonElement;
-
-  const gameoverScreen = document.getElementById('gameover-screen') as HTMLElement;
-  const gameoverScore = document.getElementById('gameover-score') as HTMLElement;
-  const gameoverBest = document.getElementById('gameover-best') as HTMLElement;
-  const btnRestartGame = document.getElementById('btn-restart-game') as HTMLButtonElement;
+  const btnResetBall = document.getElementById('btn-reset-ball') as HTMLButtonElement;
 
   const cameraService = new CameraService(webcamVideo);
   const pixiRenderer = new PixiRenderer();
@@ -42,45 +37,38 @@ async function bootstrap() {
   const audioEffects = new AudioEffects();
   const gameSession = new GameSession();
 
+  // Balle avec physique douce, aérienne et contrôlée (bac à sable)
   const ball = new Ball({
     x: window.innerWidth / 2,
-    y: 120,
-    radius: 36,
-    gravity: 800,
-    restitution: 0.85,
+    y: 140,
+    radius: 38,
+    gravity: 480, // Gravité douce (effet ballon léger)
+    restitution: 0.65, // Rebond amorti
+    friction: 0.996,
+    maxSpeed: 500, // Plafonnement évitant les éjections brusques
   });
 
   function updateScoreDisplay() {
     statScore.textContent = String(gameSession.currentScore);
-    statBest.textContent = String(gameSession.bestScore);
     statScore.classList.add('bump');
     setTimeout(() => statScore.classList.remove('bump'), 120);
   }
 
-  function restartGame() {
-    gameoverScreen.classList.add('hidden');
-    gameSession.restart();
-    statScore.textContent = '0';
-    statBest.textContent = String(gameSession.bestScore);
+  function recenterBall() {
     const screenWidth = pixiRenderer.app.screen?.width ?? window.innerWidth;
-    ball.reset(screenWidth / 2, 120, (Math.random() - 0.5) * 60, 0);
+    ball.reset(screenWidth / 2, 140, (Math.random() - 0.5) * 40, 0);
   }
 
   gameSession.subscribe((event) => {
     if (event.type === 'bounce') {
       updateScoreDisplay();
       audioEffects.playBounce(event.score);
-    } else if (event.type === 'gameover') {
-      audioEffects.playDrop();
-      gameoverScore.textContent = String(event.score);
-      gameoverBest.textContent = String(event.bestScore);
-      gameoverScreen.classList.remove('hidden');
     } else if (event.type === 'pause') {
       btnTogglePause.textContent = gameSession.state === 'PAUSED' ? '▶ Reprendre' : '⏸ Pause';
     }
   });
 
-  btnRestartGame.addEventListener('click', restartGame);
+  btnResetBall.addEventListener('click', recenterBall);
 
   let showSkeleton = true;
   btnToggleSkeleton.addEventListener('click', () => {
@@ -100,13 +88,9 @@ async function bootstrap() {
     } else if (e.key === 'p' || e.key === 'P') {
       btnTogglePause.click();
     } else if (e.key === 'r' || e.key === 'R') {
-      restartGame();
+      recenterBall();
     } else if (e.code === 'Space') {
-      if (gameSession.state === 'GAMEOVER') {
-        restartGame();
-      } else {
-        gameSession.togglePause();
-      }
+      gameSession.togglePause();
     }
   });
 
@@ -128,10 +112,11 @@ async function bootstrap() {
 
   const prevHandsMap = new Map<Handedness, DetectedHand>();
   let lastLoopTime = performance.now();
+  let lastBounceTime = 0;
 
   function gameLoop(now: number) {
     updateFps(now);
-    const dt = Math.min(0.05, Math.max(0.001, (now - lastLoopTime) / 1000));
+    const dt = Math.min(0.04, Math.max(0.001, (now - lastLoopTime) / 1000));
     lastLoopTime = now;
 
     const screenWidth = pixiRenderer.app.screen?.width ?? window.innerWidth;
@@ -186,23 +171,19 @@ async function bootstrap() {
       contactRenderer.render([]);
     }
 
-    // Mise à jour de la physique et des règles de jeu
+    // Mise à jour de la physique dans le bac à sable
     if (gameSession.state === 'PLAYING') {
-      if (ball.isAlive) {
-        ball.step(dt, screenWidth, screenHeight);
+      ball.step(dt, screenWidth, screenHeight);
 
-        // Résolution des collisions main / ballon
+      // Résolution douce des collisions avec debouncing temporel (évite les rafales de rebonds)
+      if (now - lastBounceTime > 80) {
         const bounce = resolveBallHandCollision(ball, allCircles, allCapsules);
         if (bounce.bounced) {
+          lastBounceTime = now;
           gameSession.recordBounce(bounce.impulse);
           const bounceAngle = Math.atan2(bounce.normal.y, bounce.normal.x);
           ballRenderer.triggerBounceEffect(bounceAngle);
-          particleSystem.emitBurst(bounce.contactPoint.x, bounce.contactPoint.y, 20);
-        }
-
-        // Si le ballon vient de tomber
-        if (!ball.isAlive) {
-          gameSession.recordDrop();
+          particleSystem.emitBurst(bounce.contactPoint.x, bounce.contactPoint.y, 14);
         }
       }
     }
@@ -230,7 +211,7 @@ async function bootstrap() {
 
       await handLandmarkerService.init();
 
-      console.log('IrisToy initialized successfully. Arcade session ready!');
+      console.log('IrisToy Sandbox initialized successfully.');
       lastLoopTime = performance.now();
       requestAnimationFrame(gameLoop);
     } catch (err: unknown) {
@@ -242,7 +223,7 @@ async function bootstrap() {
     }
   }
 
-  // Afficher le modal d'explication au lancement pour respecter la User Story 1
+  // Écran d'accueil explicatif
   overlayScreen.classList.remove('hidden');
   modalTitle.textContent = 'Accès à la caméra requis';
   modalMessage.textContent =

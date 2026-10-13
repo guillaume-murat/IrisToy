@@ -9,17 +9,17 @@ describe('Ball Physics Simulation', () => {
       x: 500,
       y: 200,
       radius: 30,
-      gravity: 1000,
-      restitution: 0.8,
+      gravity: 600,
+      restitution: 0.7,
     });
 
     expect(ball.velocity.vy).toBe(0);
 
-    // Simulate 0.1s
+    // Simuler 0.1s
     ball.step(0.1, 1000, 800);
 
-    // vy = 0 + 1000 * 0.1 = 100 px/s
-    expect(ball.velocity.vy).toBeCloseTo(100, 1);
+    // vy = 0 + 600 * 0.1 = 60 px/s
+    expect(ball.velocity.vy).toBeCloseTo(60, 1);
     expect(ball.position.y).toBeGreaterThan(200);
   });
 
@@ -33,30 +33,30 @@ describe('Ball Physics Simulation', () => {
     });
     ball.velocity = { vx: -200, vy: 0 };
 
-    // Next step will penetrate left wall (x - r < 0)
+    // L'étape suivante touche le mur gauche (x - r < 0)
     ball.step(0.1, 1000, 800);
 
     expect(ball.position.x).toBeGreaterThanOrEqual(25);
-    // vx should reverse with restitution: -(-200) * 0.8 = +160
+    // vx s'inverse avec la restitution
     expect(ball.velocity.vx).toBeGreaterThan(0);
   });
 
-  it('marks ball as dead when it drops below the screen bottom', () => {
+  it('bounces off the bottom floor so the ball never leaves the screen (POC sandbox mode)', () => {
     const ball = new Ball({
       x: 500,
-      y: 790,
+      y: 785,
       radius: 30,
       gravity: 500,
+      restitution: 0.65,
     });
-    ball.velocity = { vx: 0, vy: 400 };
+    ball.velocity = { vx: 0, vy: 300 };
 
     ball.step(0.1, 1000, 800);
 
-    expect(ball.isAlive).toBe(false);
-
-    ball.reset(500, 100);
+    // La balle doit rester en vie et rebondir vers le haut
     expect(ball.isAlive).toBe(true);
-    expect(ball.position.y).toBe(100);
+    expect(ball.position.y).toBeLessThanOrEqual(800 - 30);
+    expect(ball.velocity.vy).toBeLessThan(0); // rebond vers le haut
   });
 });
 
@@ -67,25 +67,24 @@ describe('Dynamic Hand Collision & Momentum Transfer', () => {
       y: 400,
       radius: 30,
       gravity: 0,
-      restitution: 0.8,
+      restitution: 0.65,
     });
-    ball.velocity = { vx: 0, vy: 200 }; // Ball falling down
+    ball.velocity = { vx: 0, vy: 150 }; // Balle descendant doucement
 
-    // Hand fingertip collider moving fast upward (vy = -800 px/s)
+    // Main remontant vers la balle
     const handCollider: CircleCollider = {
       type: 'circle',
-      center: { x: 500, y: 430 }, // Overlaps ball (dist = 30, sum of radii = 30 + 20 = 50)
+      center: { x: 500, y: 430 },
       radius: 20,
-      velocity: { vx: 0, vy: -800 },
+      velocity: { vx: 0, vy: -500 },
       tag: 'fingertip',
     };
 
     const bounce = resolveBallHandCollision(ball, [handCollider], []);
 
     expect(bounce.bounced).toBe(true);
-    // Ball should be propelled upward (vy < 0)
+    // La balle est propulsée vers le haut de façon maîtrisée
     expect(ball.velocity.vy).toBeLessThan(0);
-    // Position should be resolved above the hand collider
     expect(ball.position.y).toBeLessThan(handCollider.center.y - handCollider.radius);
   });
 });

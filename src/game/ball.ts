@@ -5,6 +5,7 @@ export interface BallConfig {
   gravity?: number;
   restitution?: number;
   friction?: number;
+  maxSpeed?: number;
 }
 
 export class Ball {
@@ -14,15 +15,17 @@ export class Ball {
   public gravity: number;
   public restitution: number;
   public friction: number;
+  public maxSpeed: number;
   public isAlive: boolean;
 
   constructor(config: BallConfig) {
     this.position = { x: config.x, y: config.y };
     this.velocity = { vx: 0, vy: 0 };
-    this.radius = config.radius ?? 32;
-    this.gravity = config.gravity ?? 850;
-    this.restitution = config.restitution ?? 0.85;
-    this.friction = config.friction ?? 0.998;
+    this.radius = config.radius ?? 34;
+    this.gravity = config.gravity ?? 500; // Gravité plus douce et aérienne
+    this.restitution = config.restitution ?? 0.65; // Rebond modéré et doux
+    this.friction = config.friction ?? 0.995;
+    this.maxSpeed = config.maxSpeed ?? 520; // Vitesse maximale plafonnée pour éviter les fusées
     this.isAlive = true;
   }
 
@@ -34,6 +37,14 @@ export class Ball {
     // Appliquer la gravité et le frottement de l'air
     this.velocity.vy += this.gravity * dt;
     this.velocity.vx *= Math.pow(this.friction, dt * 60);
+
+    // Plafonner la vitesse globale
+    const currentSpeed = Math.hypot(this.velocity.vx, this.velocity.vy);
+    if (currentSpeed > this.maxSpeed) {
+      const scale = this.maxSpeed / currentSpeed;
+      this.velocity.vx *= scale;
+      this.velocity.vy *= scale;
+    }
 
     // Mettre à jour la position
     this.position.x += this.velocity.vx * dt;
@@ -48,9 +59,17 @@ export class Ball {
       this.velocity.vx = -Math.abs(this.velocity.vx) * this.restitution;
     }
 
-    // Chute sous le bas de l'écran (balle perdue)
-    if (this.position.y - this.radius > screenHeight) {
-      this.isAlive = false;
+    // Collision avec le plafond
+    if (this.position.y - this.radius < 0) {
+      this.position.y = this.radius;
+      this.velocity.vy = Math.abs(this.velocity.vy) * this.restitution;
+    }
+
+    // Collision avec le sol : rebondit au lieu de tomber, ne sort jamais du cadre (mode bac à sable)
+    if (this.position.y + this.radius > screenHeight) {
+      this.position.y = screenHeight - this.radius;
+      this.velocity.vy = -Math.abs(this.velocity.vy) * this.restitution;
+      this.velocity.vx *= 0.92; // Léger frottement au sol
     }
   }
 
@@ -62,6 +81,14 @@ export class Ball {
   public applyImpulse(impulseX: number, impulseY: number): void {
     this.velocity.vx += impulseX;
     this.velocity.vy += impulseY;
+
+    // Plafonner immédiatement pour éviter toute secousse brutale
+    const currentSpeed = Math.hypot(this.velocity.vx, this.velocity.vy);
+    if (currentSpeed > this.maxSpeed) {
+      const scale = this.maxSpeed / currentSpeed;
+      this.velocity.vx *= scale;
+      this.velocity.vy *= scale;
+    }
   }
 
   public reset(spawnX: number, spawnY: number, initialVx: number = 0, initialVy: number = 0): void {

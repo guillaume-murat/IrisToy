@@ -17,7 +17,7 @@
       <!-- Interface utilisateur (HUD & Commandes) -->
       <header id="hud-header">
         <div class="logo-title">
-          <span class="iris-badge">🔴 LIVE</span>
+          <span class="iris-badge">POC BAC À SABLE</span>
           <h1>IrisToy</h1>
         </div>
 
@@ -28,14 +28,16 @@
             <span id="stat-score" class="score-value">0</span>
           </div>
           <div class="score-sub">
-            <span>RECORD : </span>
-            <strong id="stat-best">0</strong>
+            <span>R pour recentrer la balle</span>
           </div>
         </div>
 
         <div class="hud-stats">
           <div class="stat-pill" id="stat-fps">FPS: --</div>
           <div class="stat-pill" id="stat-hands">Mains: 0</div>
+          <button id="btn-reset-ball" class="btn-pill" title="Touche 'R'">
+            ⚽ Recentrer
+          </button>
           <button id="btn-toggle-skeleton" class="btn-pill" title="Touche 'D'">
             Squelette: ON
           </button>
@@ -44,20 +46,6 @@
           </button>
         </div>
       </header>
-
-      <!-- Écran Game Over -->
-      <div id="gameover-screen" class="overlay-modal hidden">
-        <div class="modal-card">
-          <div class="gameover-icon">💥</div>
-          <h2>Balle perdue !</h2>
-          <p class="gameover-summary">
-            Vous avez réalisé <strong id="gameover-score">0</strong> rebonds consécutifs !
-            <br />
-            Meilleur record : <strong id="gameover-best">0</strong>
-          </p>
-          <button id="btn-restart-game" class="btn-primary">Rejouer (R / Espace)</button>
-        </div>
-      </div>
 
       <!-- Panneau d'accueil / Erreur d'accès caméra -->
       <div id="overlay-screen" class="overlay-modal hidden">

@@ -47,16 +47,27 @@ export function resolveBallHandCollision(
       if (normalVelocity < 0) {
         ball.resolvePenetration(center, { x: normalX, y: normalY }, minDistance);
 
+        // Physique douce et progressive : impulsion amortie
         const restitution = ball.restitution;
-        const impulseMagnitude = -(1 + restitution) * normalVelocity;
+        let impulseMagnitude = -(1 + restitution) * normalVelocity * 0.65;
+        // Plafonner l'impulsion directe pour éviter les réactions violentes
+        impulseMagnitude = Math.min(impulseMagnitude, 280);
 
-        let impulseX = impulseMagnitude * normalX + 0.6 * velocity.vx;
-        let impulseY = impulseMagnitude * normalY + 0.6 * velocity.vy;
+        // Contribution de la vitesse de la main modérée et plafonnée (pour éviter le bruit de tracking)
+        const handBonusX = Math.max(-180, Math.min(180, velocity.vx * 0.18));
+        const handBonusY = Math.max(-220, Math.min(100, velocity.vy * 0.2));
 
-        // Assurer un rebond ascendant dynamique lorsque frappé par le haut de la main
-        if (normalY < -0.2 && ball.velocity.vy + impulseY > -350) {
-          impulseY = -350 - ball.velocity.vy;
+        let impulseX = impulseMagnitude * normalX + handBonusX;
+        let impulseY = impulseMagnitude * normalY + handBonusY;
+
+        // Si frappé doucement par le dessous, léger soutien ascendant naturel sans éjection brutale
+        if (normalY < -0.3 && ball.velocity.vy + impulseY > -140) {
+          impulseY = -150 - ball.velocity.vy;
         }
+
+        // Plafonner l'impulsion totale
+        impulseX = Math.max(-280, Math.min(280, impulseX));
+        impulseY = Math.max(-360, Math.min(180, impulseY));
 
         ball.applyImpulse(impulseX, impulseY);
 
