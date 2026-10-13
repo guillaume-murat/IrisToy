@@ -3,6 +3,9 @@ import { PixiRenderer } from './rendering/pixi-renderer';
 import { HandLandmarkerService } from './tracking/hand-landmarker-service';
 import { SkeletonRenderer } from './rendering/skeleton-renderer';
 import { ContactRenderer } from './rendering/contact-renderer';
+import { BallRenderer } from './rendering/ball-renderer';
+import { Ball } from './game/ball';
+import { resolveBallHandCollision } from './game/collision-resolver';
 import { generateHandColliders, type HandColliderSet } from './physics/hand-colliders';
 import type { DetectedHand, Handedness } from './types/tracking';
 
@@ -22,6 +25,16 @@ async function bootstrap() {
   const handLandmarkerService = new HandLandmarkerService();
   const skeletonRenderer = new SkeletonRenderer();
   const contactRenderer = new ContactRenderer();
+  const ballRenderer = new BallRenderer();
+
+  // Ballon virtuel
+  const ball = new Ball({
+    x: window.innerWidth / 2,
+    y: 120,
+    radius: 36,
+    gravity: 800,
+    restitution: 0.85,
+  });
 
   let showSkeleton = true;
   btnToggleSkeleton.addEventListener('click', () => {
@@ -34,6 +47,9 @@ async function bootstrap() {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'd' || e.key === 'D') {
       btnToggleSkeleton.click();
+    } else if (e.key === 'r' || e.key === 'R') {
+      // Touche 'R' pour faire réapparaître le ballon manuellement
+      ball.reset(pixiRenderer.app.screen.width / 2, 100, (Math.random() - 0.5) * 100, 0);
     }
   });
 
@@ -53,13 +69,13 @@ async function bootstrap() {
     }
   }
 
-  // Suivi temporel des mains pour le calcul des vitesses
   const prevHandsMap = new Map<Handedness, DetectedHand>();
   let lastLoopTime = performance.now();
+  let respawnTimer = 0;
 
   function gameLoop(now: number) {
     updateFps(now);
-    const dt = Math.max(0.001, (now - lastLoopTime) / 1000);
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastLoopTime) / 1000));
     lastLoopTime = now;
 
     const frame = handLandmarkerService.detectVideoFrame(webcamVideo, now);
@@ -67,8 +83,11 @@ async function bootstrap() {
     const screenWidth = pixiRenderer.app.screen?.width ?? window.innerWidth;
     const screenHeight = pixiRenderer.app.screen?.height ?? window.innerHeight;
 
+    const allCircles: HandColliderSet['circles'] = [];
+    const allCapsules: HandColliderSet['capsules'] = [];
+    const colliderSets: HandColliderSet[] = [];
+
     if (frame) {
-      const colliderSets: HandColliderSet[] = [];
       const currentHandedness = new Set<Handedness>();
 
       for (const hand of frame.hands) {
@@ -83,10 +102,11 @@ async function bootstrap() {
           true
         );
         colliderSets.push(colliders);
+        allCircles.push(...colliders.circles);
+        allCapsules.push(...colliders.capsules);
         prevHandsMap.set(hand.handedness, hand);
       }
 
-      // Nettoyer les mains qui ne sont plus détectées
       for (const handedness of prevHandsMap.keys()) {
         if (!currentHandedness.has(handedness)) {
           prevHandsMap.delete(handedness);
@@ -103,6 +123,27 @@ async function bootstrap() {
       contactRenderer.render([]);
     }
 
+    // Mise à jour de la physique du ballon
+    if (ball.isAlive) {
+      ball.step(dt, screenWidth, screenHeight);
+
+      // Résolution des collisions avec les mains du joueur
+      const bounce = resolveBallHandCollision(ball, allCircles, allCapsules);
+      if (bounce.hit) {
+        const bounceAngle = Math.atan2(bounce.normal.y, bounce.normal.x);
+        ballRenderer.triggerBounceEffect(bounceAngle);
+      }
+    } else {
+      // Recommencer automatiquement après 1 seconde si le ballon est tombé
+      respawnTimer += dt;
+      if (respawnTimer >= 1.2) {
+        ball.reset(screenWidth / 2, 100, (Math.random() - 0.5) * 80, 0);
+        respawnTimer = 0;
+      }
+    }
+
+    ballRenderer.update(ball, dt);
+
     requestAnimationFrame(gameLoop);
   }
 
@@ -115,13 +156,17 @@ async function bootstrap() {
       await cameraService.start();
       await pixiRenderer.init(pixiContainer);
 
-      // Ajouter le conteneur du squelette puis des contacts au stage PixiJS
+      // Ordre d'affichage dans PixiJS :
+      // 1. Squelette debug
+      // 2. Halos tactiles
+      // 3. Ballon
       pixiRenderer.rootContainer.addChild(skeletonRenderer.container);
       pixiRenderer.rootContainer.addChild(contactRenderer.container);
+      pixiRenderer.rootContainer.addChild(ballRenderer.container);
 
       await handLandmarkerService.init();
 
-      console.log('IrisToy initialized successfully with colliders & pose detection.');
+      console.log('IrisToy initialized successfully with hand bouncing physics.');
       lastLoopTime = performance.now();
       requestAnimationFrame(gameLoop);
     } catch (err: unknown) {
@@ -140,7 +185,7 @@ async function bootstrap() {
   try {
     await startApp();
   } catch {
-    // startApp gère l'erreur
+    // startApp gère l'affichage du modal
   }
 }
 
